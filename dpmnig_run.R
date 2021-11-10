@@ -14,7 +14,7 @@ library(truncnorm)
 
 
 ## load datasets
-load("sim1.RData") ## this contains 100 datasets in simulation 1 of our paper
+load("./data/sim1.RData") ## this contains 100 datasets in simulation 1 of our paper
 set.seed(20211110)
 
 ## change the directory here
