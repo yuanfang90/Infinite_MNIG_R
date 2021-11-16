@@ -1094,9 +1094,9 @@ BIC <- 2*loglik_approx - npar*log(n)
 runtime <- end_time-start_time
 
 par.vec=list(mu=mu,beta=beta,gamma=gamma,sigma=sig,final.G=G,ARI=ARI,BIC=BIC,runtime=runtime)
-par.list=list(mu=Mu,beta=Beta,gamma=Gamma,sigma=Sigma,final.G=G,ARI=ARI,BIC=BIC,runtime=runtime)
+par.list=list(mu=Mu,beta=Beta,gamma=Gamma,sigma=Sigma,final.G=G,ARI=ARI,BIC=BIC,runtime=runtime,cluster=ord_final_class)
 
-if(outputs == "vectors"){return(result.vec = par.vec)}
+if(outputs == "vectors"){return(list(result.vec = par.vec, cluster = ord_final_class))}
 if(outputs == "lists"){return(par.list)}
 
 }
