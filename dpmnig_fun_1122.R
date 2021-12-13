@@ -179,7 +179,7 @@ Update_d_alpha <- function(old_d_alpha,G,n,a,b){
 # plots: logic, trace plot or not
 # outputs: "vector" or "lists", format of output estimated parameter
 
-dpMNIG <- function(data,true_lab,maxiter,dp.alpha,Gstarts=1,verbs=FALSE,plots=FALSE,outputs){
+dpMNIG <- function(data,true_lab,maxiter,dp.alpha,verbs=FALSE,plots=FALSE,outputs){
 #################
 #### DPMNIG #####
 #################
@@ -189,7 +189,7 @@ true_lab<-true_lab
 n<-nrow(x)
 d<-ncol(x)
 it<-1
-max_it<-1000
+max_it<-600
 check<-0
 G<-1
 G_lab<-1 #This will make sure that when a group is removed the label doesn't go down like G would
@@ -238,7 +238,7 @@ for(chain in 1:3){
 }
 
 multi_starts <- c()
-multi_starts[1] <- Gstarts
+multi_starts[1] <- 1
 multi_starts[2] <- n
 multi_starts[3] <- sample(1:n,1,replace=TRUE)
 
@@ -256,11 +256,7 @@ for(chain in 1:3){
   Class<-all_Class_matrix[[chain]]
   
   if(chain == 1){
-    if(Gstarts ==1){
-      Class[,1]<-rep("c1",n) #All observations in the same group
-    }else{
-      Class[,1]<-paste("c",kmeans(x,centers=G)$cluster,sep="") #k-means
-    }
+    Class[,1]<-rep("c1",n) #All observations in the same group
   }
   if(chain == 2){
     Class[,1]<-paste("c",c(1:n),sep="") #Each obs on its own grp
@@ -286,9 +282,6 @@ for(chain in 1:3){
   up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
   V0_co<-list(V0_co)
   
-  up_init <- up_p
-  V0_init <- V0_co
-  
   #### get parameters for iteration 1
   ISig<-list()
   Gamma<-list()
@@ -311,7 +304,7 @@ for(chain in 1:3){
   i<-1
   
   loglik <- NULL
-  all_loglik[[chain]][1] <- -14000
+  all_loglik[[chain]][1] <- -1400
   stop.cr = 0
   ####################### 
   ##### Start Iterations
@@ -329,28 +322,19 @@ for(chain in 1:3){
     for (i in 1:n){
       # print(i)
       ### For new group  
-      sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d),silent=TRUE)
-      if(any(class(sam_com)=="try-error")){sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)}
+      sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d))
       ##### Prob for new groups
-      check.new <- 0
-      for.new <- try(lik(mu=sam_com$Mu,beta=sam_com$Beta,gamma=sam_com$Gamma,Sigma_inv=sam_com$ISig,x=as.matrix(x[i,]),d=d),silent=TRUE)
-      new<-try(d_alpha*for.new,silent=TRUE)
-      if(class(for.new)=="try-error"){check.new = 1}
+      new<-d_alpha*try(lik(mu=sam_com$Mu,beta=sam_com$Beta,gamma=sam_com$Gamma,Sigma_inv=sam_com$ISig,x=as.matrix(x[i,]),d=d),silent=TRUE)
       ### Prob for old groups
       old<-NULL
-      check.old <- 0
       for (j in labels){
         if(Ng[j] == 1){
-          for.old <- try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-          old[j]<-try(d_alpha*for.old,silent = TRUE)
-          if(class(for.old)=="try-error"){check.old = 1}
+          old[j]<-d_alpha*try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
         }else{
-          for.old <- try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-          old[j]<-try((Ng[j]-1)*for.old,silent = TRUE)
-          if(class(for.old)=="try-error"){check.old = 1}
+          old[j]<-(Ng[j]-1)*try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
         }
       }
-      if(check.new==0 & check.old==0){
+      if(!class(new) == "try-error" & !any(class(old) == "try-error")){
         prob_g<-c(new,old)/sum(c(new,old))
         ### Updating class labels
         Class.try <- try(sample(c("new",labels),1,prob=prob_g),silent = TRUE)
@@ -362,6 +346,7 @@ for(chain in 1:3){
       }else{
         Class[i,it] <- NA
       }
+      
       
       ####Since the group didn't change, do nothing####
       # if (Class[i,it]==Class[i,it-1]){
@@ -417,7 +402,6 @@ for(chain in 1:3){
           }
         }
       }else{
-        sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)
         Class[i,it]<-Class_old[i]
         Mu[[Class_old[i]]]<-sam_com$Mu
         ISig[[Class_old[i]]]<-sam_com$ISig
@@ -452,82 +436,97 @@ for(chain in 1:3){
         Beta[[g]]<-try(matrix(mu_beta$Beta,ncol=d,nrow=1),silent=TRUE)
       } else {
         sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d),silent=TRUE)
-        if(any(class(sam_com)=="try-error")){sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)}
         Gamma[[g]]<-sam_com$Gamma
         ISig[[g]]<-sam_com$ISig
         Mu[[g]]<-sam_com$Mu
         Beta[[g]]<-sam_com$Beta
       }
     }
-    if(any(sapply(ISig,class) == "try-error")|any(sapply(Mu,class) == "try-error")|any(sapply(Beta,class) == "try-error")){
+    
+    if(!any(sapply(ISig,class) == "try-error")){
+      ### Store parameters and the values for updating common hyperparameters
+      gam_vec<-numeric(G)
+      mu_isig_beta<-numeric(G)
+      beta_isig<-matrix(nrow=G,ncol=d)
+      mu_isig<-matrix(nrow=G,ncol=d)
+      beta_isig_beta<-numeric(G)
+      mu_isig_mu<-numeric(G)
       for (g in 1:G){
-        sam_com<-sample_common(up_p=up_init,V0=V0_init,d=d)
-        Gamma[[g]]<-sam_com$Gamma
-        ISig[[g]]<-sam_com$ISig
-        Mu[[g]]<-sam_com$Mu
-        Beta[[g]]<-sam_com$Beta
+        # print(g)
+        gam_vec[g]<-Gamma[[g]]
+        mu_isig_beta[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
+        beta_isig[g,]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]
+        mu_isig[g,]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]
+        beta_isig_beta[g]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
+        mu_isig_mu[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Mu[[g]],ncol=d,nrow=1))
       }
-    }
-    ### Store parameters and the values for updating common hyperparameters
-    gam_vec<-numeric(G)
-    mu_isig_beta<-numeric(G)
-    beta_isig<-matrix(nrow=G,ncol=d)
-    mu_isig<-matrix(nrow=G,ncol=d)
-    beta_isig_beta<-numeric(G)
-    mu_isig_mu<-numeric(G)
-    for (g in 1:G){
-      # print(g)
-      gam_vec[g]<-Gamma[[g]]
-      mu_isig_beta[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
-      beta_isig[g,]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]
-      mu_isig[g,]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]
-      beta_isig_beta[g]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
-      mu_isig_mu[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Mu[[g]],ncol=d,nrow=1))
-    }
-    
-    ###Updating common hyperparameter using their posterior distributions
-    b0_new=1/(1/b0-sum(log(pi_g))-sum(log(sapply(ISig,det))/2)-sum(gam_vec)+sum(mu_isig_beta))
-    if(b0_new <= 0){b0_new=b0}
-    b1_new=b1
-    b2_new=b2
-    c1_new=c1+(colSums(beta_isig))%*%b1
-    c2_new=c2+(colSums(mu_isig))%*%b2
-    b3_new=1/(1/b3+0.5*(sum(beta_isig_beta)+sum(gam_vec^2)))
-    b4_new=1/(1/b4+0.5*(sum(mu_isig_mu)+G))
-    
-    a0<-rexp(1,rate=b0_new)
-    a1<-as.matrix(rmvnorm(1,mean=c1_new,sigma=b1_new),nrow=1)
-    a2<-as.matrix(rmvnorm(1,mean=c2_new,sigma=b2_new),nrow=1)
-    a3<-rexp(1,rate=b3_new)
-    a4<-rexp(1,rate=b4_new)
-    
-    nu0_new=nu0+G*a0
-    L0_new=solve(solve(L0)+Reduce("+",ISig))
-    
-    up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
-    V0_co<-list(riwish(nu0_new,L0_new))
-    
-    if(verbs){
-      cat("Chain:",multi_starts[chain],"start","\n")
-      cat("Iteration", it, "\n")
-      print(table(Class[,it]))
-    }
-    
-    ###Calucluate the log likelihood
-    likelihood <- matrix(0,nrow=n,ncol=G)
-    for (g in 1:G){
-      likelihood[,g] <- sapply(1:n,function(i){
-        liktry <- try(lik(mu=Mu[[g]],beta=Beta[[g]],gamma=Gamma[[g]],Sigma_inv=ISig[[g]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-        ifelse(class(liktry)=="try-error",return(NA),return(pi_g[g]*liktry))
-      })
-    }
-    if(!any(is.na(likelihood))){
-      loglik <- sum(log(rowSums(likelihood)))
+      
+      ###Updating common hyperparameter using their posterior distributions
+      b0_new=1/(1/b0-sum(log(pi_g))-sum(log(sapply(ISig,det))/2)-sum(gam_vec)+sum(mu_isig_beta))
+      if(b0_new <= 0){b0_new=b0}
+      b1_new=b1
+      b2_new=b2
+      c1_new=c1+(colSums(beta_isig))%*%b1
+      c2_new=c2+(colSums(mu_isig))%*%b2
+      b3_new=1/(1/b3+0.5*(sum(beta_isig_beta)+sum(gam_vec^2)))
+      b4_new=1/(1/b4+0.5*(sum(mu_isig_mu)+G))
+      
+      a0<-rexp(1,rate=b0_new)
+      a1<-as.matrix(rmvnorm(1,mean=c1_new,sigma=b1_new),nrow=1)
+      a2<-as.matrix(rmvnorm(1,mean=c2_new,sigma=b2_new),nrow=1)
+      a3<-rexp(1,rate=b3_new)
+      a4<-rexp(1,rate=b4_new)
+      
+      nu0_new=nu0+G*a0
+      L0_new=solve(solve(L0)+Reduce("+",ISig))
+      
+      up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
+      V0_co<-list(riwish(nu0_new,L0_new))
+      
+      if(verbs){
+        cat("Chain:",multi_starts[chain],"start","\n")
+        cat("Iteration", it, "\n")
+        print(table(Class[,it]))
+      }
+      
+      ###Calucluate the log likelihood
+      likelihood <- matrix(0,nrow=n,ncol=G)
+      for (g in 1:G){
+        likelihood[,g] <- sapply(1:n,function(i){
+          liktry <- try(lik(mu=Mu[[g]],beta=Beta[[g]],gamma=Gamma[[g]],Sigma_inv=ISig[[g]],x=as.matrix(x[i,]),d=d),silent=TRUE)
+          ifelse(class(liktry)=="try-error",return(NA),return(pi_g[g]*liktry))
+          })
+      }
+      if(!any(is.na(likelihood))){
+        loglik <- sum(log(rowSums(likelihood)))
+      }else{
+        loglik <- NA
+        stop.cr = 1
+      }
+      all_loglik[[chain]][it] <- loglik
     }else{
-      loglik <- NA
+      Gamma <- NA
+      ISig <- NA
+      Mu <- NA
+      Beta <- NA
+      phi <- NA
+      alpha <- NA
+      U <- NA
+      Uinv <- NA 
+      up_p <- NA 
+      V0_co <- NA
+      
+      if(verbs){
+        cat("Chain:",multi_starts[chain],"start","\n")
+        cat("Iteration", it, "\n")
+        print("Computational errpr, NA in the parameter estimation output")
+      }
+      
+      ###Calucluate the log likelihood
+      all_loglik[[chain]][it] <- NA
       stop.cr = 1
     }
-    all_loglik[[chain]][it] <- loglik
+    
     it<-it+1
   }
   all_Class_matrix[[chain]] <- Class
@@ -545,6 +544,7 @@ negInfLik <- 0
 bchain <- 0
 for(chain in 1:3){
   if(any(is.na(all_loglik[[chain]]))){
+    negInfLik <- 1
     all_loglik[[chain]][c(which(is.na(all_loglik[[chain]])):max_it)] <- NA
     bad.chain[chain] <- chain
     stop.cr = 1
@@ -558,7 +558,7 @@ for(chain in 1:3){
 }
 obj <- mcmc.list(object)
 conv <- gelman.diag(obj)
-if(negInfLik == 1 | bchain == 1){
+if(negInfLik == 1){
   check.conv <- 1
 }else{
   check.conv <- conv[[1]][1]
@@ -599,7 +599,7 @@ while(check.conv > check.thresh & stop.cr==0){
     Class<-cbind(all_Class_matrix[[chain]],add_class_mat)
     
     it <- it_old
-    while (it<(max_it+1)& stop.cr==0){
+    while (it<(max_it+1)){
       # for(it in 2:102){
       Class_old<-Class[,it-1]
       Class[,it]<-Class[,it-1]
@@ -613,28 +613,19 @@ while(check.conv > check.thresh & stop.cr==0){
       for (i in 1:n){
         # print(i)
         ### For new group  
-        sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d),silent=TRUE)
-        if(any(class(sam_com)=="try-error")){sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)}
+        sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d))
         ##### Prob for new groups
-        check.new <- 0
-        for.new <- try(lik(mu=sam_com$Mu,beta=sam_com$Beta,gamma=sam_com$Gamma,Sigma_inv=sam_com$ISig,x=as.matrix(x[i,]),d=d),silent=TRUE)
-        new<-try(d_alpha*for.new,silent=TRUE)
-        if(class(for.new)=="try-error"){check.new = 1}
+        new<-d_alpha*try(lik(mu=sam_com$Mu,beta=sam_com$Beta,gamma=sam_com$Gamma,Sigma_inv=sam_com$ISig,x=as.matrix(x[i,]),d=d),silent=TRUE)
         ### Prob for old groups
         old<-NULL
-        check.old <- 0
         for (j in labels){
           if(Ng[j] == 1){
-            for.old <- try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-            old[j]<-try(d_alpha*for.old,silent = TRUE)
-            if(class(for.old)=="try-error"){check.old = 1}
+            old[j]<-d_alpha*try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
           }else{
-            for.old <- try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-            old[j]<-try((Ng[j]-1)*for.old,silent = TRUE)
-            if(class(for.old)=="try-error"){check.old = 1}
+            old[j]<-(Ng[j]-1)*try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
           }
         }
-        if(check.new==0 & check.old==0){
+        if(!class(new) == "try-error" & !any(class(old) == "try-error")){
           prob_g<-c(new,old)/sum(c(new,old))
           ### Updating class labels
           Class.try <- try(sample(c("new",labels),1,prob=prob_g),silent = TRUE)
@@ -701,7 +692,6 @@ while(check.conv > check.thresh & stop.cr==0){
             }
           }
         }else{
-          sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)
           Class[i,it]<-Class_old[i]
           Mu[[Class_old[i]]]<-sam_com$Mu
           ISig[[Class_old[i]]]<-sam_com$ISig
@@ -736,7 +726,6 @@ while(check.conv > check.thresh & stop.cr==0){
           Beta[[g]]<-try(matrix(mu_beta$Beta,ncol=d,nrow=1),silent=TRUE)
         } else {
           sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d),silent=TRUE)
-          if(any(class(sam_com)=="try-error")){sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)}
           Gamma[[g]]<-sam_com$Gamma
           ISig[[g]]<-sam_com$ISig
           Mu[[g]]<-sam_com$Mu
@@ -744,76 +733,90 @@ while(check.conv > check.thresh & stop.cr==0){
         }
       }
       
-      if(any(sapply(ISig,class) == "try-error")|any(sapply(Mu,class) == "try-error")|any(sapply(Beta,class) == "try-error")){
+      if(!any(sapply(ISig,class) == "try-error")){
+        ### Store parameters and the values for updating common hyperparameters
+        gam_vec<-numeric(G)
+        mu_isig_beta<-numeric(G)
+        beta_isig<-matrix(nrow=G,ncol=d)
+        mu_isig<-matrix(nrow=G,ncol=d)
+        beta_isig_beta<-numeric(G)
+        mu_isig_mu<-numeric(G)
         for (g in 1:G){
-          sam_com<-sample_common(up_p=up_init,V0=V0_init,d=d)
-          Gamma[[g]]<-sam_com$Gamma
-          ISig[[g]]<-sam_com$ISig
-          Mu[[g]]<-sam_com$Mu
-          Beta[[g]]<-sam_com$Beta
+          # print(g)
+          gam_vec[g]<-Gamma[[g]]
+          mu_isig_beta[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
+          beta_isig[g,]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]
+          mu_isig[g,]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]
+          beta_isig_beta[g]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
+          mu_isig_mu[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Mu[[g]],ncol=d,nrow=1))
         }
-      }
-      
-      ### Store parameters and the values for updating common hyperparameters
-      gam_vec<-numeric(G)
-      mu_isig_beta<-numeric(G)
-      beta_isig<-matrix(nrow=G,ncol=d)
-      mu_isig<-matrix(nrow=G,ncol=d)
-      beta_isig_beta<-numeric(G)
-      mu_isig_mu<-numeric(G)
-      for (g in 1:G){
-        # print(g)
-        gam_vec[g]<-Gamma[[g]]
-        mu_isig_beta[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
-        beta_isig[g,]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]
-        mu_isig[g,]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]
-        beta_isig_beta[g]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
-        mu_isig_mu[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Mu[[g]],ncol=d,nrow=1))
-      }
-      
-      ###Updating common hyperparameter using their posterior distributions
-      b0_new=1/(1/b0-sum(log(pi_g))-sum(log(sapply(ISig,det))/2)-sum(gam_vec)+sum(mu_isig_beta))
-      if(b0_new <= 0){b0_new=b0}
-      b1_new=b1
-      b2_new=b2
-      c1_new=c1+(colSums(beta_isig))%*%b1
-      c2_new=c2+(colSums(mu_isig))%*%b2
-      b3_new=1/(1/b3+0.5*(sum(beta_isig_beta)+sum(gam_vec^2)))
-      b4_new=1/(1/b4+0.5*(sum(mu_isig_mu)+G))
-      
-      a0<-rexp(1,rate=b0_new)
-      a1<-as.matrix(rmvnorm(1,mean=c1_new,sigma=b1_new),nrow=1)
-      a2<-as.matrix(rmvnorm(1,mean=c2_new,sigma=b2_new),nrow=1)
-      a3<-rexp(1,rate=b3_new)
-      a4<-rexp(1,rate=b4_new)
-      
-      nu0_new=nu0+G*a0
-      L0_new=solve(solve(L0)+Reduce("+",ISig))
-      
-      up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
-      V0_co<-list(riwish(nu0_new,L0_new))
-      
-      if(verbs){
-        cat("Chain:",multi_starts[chain],"start","\n")
-        cat("Iteration", it, "\n")
-        print(table(Class[,it]))
-      }
-      
-      ###Calucluate the log likelihood
-      likelihood <- matrix(0,nrow=n,ncol=G)
-      for (g in 1:G){
-        likelihood[,g] <- sapply(1:n,function(i){
-          liktry <- try(lik(mu=Mu[[g]],beta=Beta[[g]],gamma=Gamma[[g]],Sigma_inv=ISig[[g]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-          ifelse(class(liktry)=="try-error",return(NA),return(pi_g[g]*liktry))
-        })
-      }
-      if(!any(is.na(likelihood))){
-        loglik <- sum(log(rowSums(likelihood)))
+        
+        ###Updating common hyperparameter using their posterior distributions
+        b0_new=1/(1/b0-sum(log(pi_g))-sum(log(sapply(ISig,det))/2)-sum(gam_vec)+sum(mu_isig_beta))
+        if(b0_new <= 0){b0_new=b0}
+        b1_new=b1
+        b2_new=b2
+        c1_new=c1+(colSums(beta_isig))%*%b1
+        c2_new=c2+(colSums(mu_isig))%*%b2
+        b3_new=1/(1/b3+0.5*(sum(beta_isig_beta)+sum(gam_vec^2)))
+        b4_new=1/(1/b4+0.5*(sum(mu_isig_mu)+G))
+        
+        a0<-rexp(1,rate=b0_new)
+        a1<-as.matrix(rmvnorm(1,mean=c1_new,sigma=b1_new),nrow=1)
+        a2<-as.matrix(rmvnorm(1,mean=c2_new,sigma=b2_new),nrow=1)
+        a3<-rexp(1,rate=b3_new)
+        a4<-rexp(1,rate=b4_new)
+        
+        nu0_new=nu0+G*a0
+        L0_new=solve(solve(L0)+Reduce("+",ISig))
+        
+        up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
+        V0_co<-list(riwish(nu0_new,L0_new))
+        
+        if(verbs){
+          cat("Chain:",multi_starts[chain],"start","\n")
+          cat("Iteration", it, "\n")
+          print(table(Class[,it]))
+        }
+        
+        ###Calucluate the log likelihood
+        likelihood <- matrix(0,nrow=n,ncol=G)
+        for (g in 1:G){
+          likelihood[,g] <- sapply(1:n,function(i){
+            liktry <- try(lik(mu=Mu[[g]],beta=Beta[[g]],gamma=Gamma[[g]],Sigma_inv=ISig[[g]],x=as.matrix(x[i,]),d=d),silent=TRUE)
+            ifelse(class(liktry)=="try-error",return(NA),return(pi_g[g]*liktry))
+          })
+        }
+        if(!any(is.na(likelihood))){
+          loglik <- sum(log(rowSums(likelihood)))
+        }else{
+          loglik <- NA
+          stop.cr = 1
+        }
+        all_loglik[[chain]][it] <- loglik
       }else{
-        loglik <- NA
+        Gamma <- NA
+        ISig <- NA
+        Mu <- NA
+        Beta <- NA
+        phi <- NA
+        alpha <- NA
+        U <- NA
+        Uinv <- NA 
+        up_p <- NA 
+        V0_co <- NA
+        
+        if(verbs){
+          cat("Chain:",multi_starts[chain],"start","\n")
+          cat("Iteration", it, "\n")
+          print("Computational errpr, NA in the parameter estimation output")
+        }
+        
+        ###Calucluate the log likelihood
+        all_loglik[[chain]][it] <- NA
         stop.cr = 1
       }
-      all_loglik[[chain]][it] <- loglik
+      
       it<-it+1
     }
     all_Class_matrix[[chain]] <- Class
@@ -838,6 +841,7 @@ while(check.conv > check.thresh & stop.cr==0){
   # }
   for(chain in 1:3){
     if(any(is.na(all_loglik[[chain]]))){
+      negInfLik <- 1
       all_loglik[[chain]][c(which(is.na(all_loglik[[chain]])):max_it)] <- NA
       bad.chain[chain] <- chain
       stop.cr = 1
@@ -851,7 +855,7 @@ while(check.conv > check.thresh & stop.cr==0){
   }
   obj <- mcmc.list(object)
   conv <- gelman.diag(obj)
-  if(max_it == maxiter|negInfLik == 1|bchain == 1){
+  if(max_it == maxiter|negInfLik == 1){
     check.conv <- 1
   }else{
     check.conv <- conv[[1]][1]
@@ -870,7 +874,7 @@ while(check.conv > check.thresh & stop.cr==0){
 ####################################################################################
 ####### creat 500 more samples each chain after reaching convergence or maxiter ####
 ####################################################################################
-it_old <- max_it+1
+it_old <- max_it
 max_it <- max_it+500
 store_all_pars <- list()
 ord_Class_labels <- list()
@@ -924,28 +928,19 @@ for(chain in good.chain){
     for (i in 1:n){
       # print(i)
       ### For new group  
-      sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d),silent=TRUE)
-      if(any(class(sam_com)=="try-error")){sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)}
+      sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d))
       ##### Prob for new groups
-      check.new<-0
-      for.new <- try(lik(mu=sam_com$Mu,beta=sam_com$Beta,gamma=sam_com$Gamma,Sigma_inv=sam_com$ISig,x=as.matrix(x[i,]),d=d),silent=TRUE)
-      new<-try(d_alpha*for.new,silent=TRUE)
-      if(class(for.new)=="try-error"){check.new = 1}
+      new<-d_alpha*try(lik(mu=sam_com$Mu,beta=sam_com$Beta,gamma=sam_com$Gamma,Sigma_inv=sam_com$ISig,x=as.matrix(x[i,]),d=d),silent=TRUE)
       ### Prob for old groups
       old<-NULL
-      check.old <- 0
       for (j in labels){
         if(Ng[j] == 1){
-          for.old <- try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-          old[j]<-try(d_alpha*for.old,silent = TRUE)
-          if(class(for.old)=="try-error"){check.old = 1}
+          old[j]<-d_alpha*try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
         }else{
-          for.old <- try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-          old[j]<-try((Ng[j]-1)*for.old,silent = TRUE)
-          if(class(for.old)=="try-error"){check.old = 1}
+          old[j]<-(Ng[j]-1)*try(lik(mu=Mu[[j]],beta=Beta[[j]],gamma=Gamma[[j]],Sigma_inv=ISig[[j]],x=as.matrix(x[i,]),d=d),silent=TRUE)
         }
       }
-      if(check.new==0 & check.old==0){
+      if(!class(new) == "try-error" & !any(class(old) == "try-error")){
         prob_g<-c(new,old)/sum(c(new,old))
         ### Updating class labels
         Class.try <- try(sample(c("new",labels),1,prob=prob_g),silent = TRUE)
@@ -1012,7 +1007,6 @@ for(chain in good.chain){
           }
         }
       }else{
-        sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)
         Class[i,it]<-Class_old[i]
         Mu[[Class_old[i]]]<-sam_com$Mu
         ISig[[Class_old[i]]]<-sam_com$ISig
@@ -1046,7 +1040,6 @@ for(chain in good.chain){
         Beta[[g]]<-try(matrix(mu_beta$Beta,ncol=d,nrow=1),silent=TRUE)
       } else {
         sam_com<-try(sample_common(up_p=up_p,V0=V0_co,d=d),silent=TRUE)
-        if(any(class(sam_com)=="try-error")){sam_com <- sample_common(up_p=up_init,V0=V0_init,d=d)}
         Gamma[[g]]<-sam_com$Gamma
         ISig[[g]]<-sam_com$ISig
         Mu[[g]]<-sam_com$Mu
@@ -1054,102 +1047,119 @@ for(chain in good.chain){
       }
     }
     
-    if(any(sapply(ISig,class) == "try-error")|any(sapply(Mu,class) == "try-error")|any(sapply(Beta,class) == "try-error")){
+    if(!any(sapply(ISig,class) == "try-error")){
+      ### Store parameters and the values for updating common hyperparameters
+      gam_vec<-numeric(G)
+      mu_isig_beta<-numeric(G)
+      beta_isig<-matrix(nrow=G,ncol=d)
+      mu_isig<-matrix(nrow=G,ncol=d)
+      beta_isig_beta<-numeric(G)
+      mu_isig_mu<-numeric(G)
       for (g in 1:G){
-        sam_com<-sample_common(up_p=up_init,V0=V0_init,d=d)
-        Gamma[[g]]<-sam_com$Gamma
-        ISig[[g]]<-sam_com$ISig
-        Mu[[g]]<-sam_com$Mu
-        Beta[[g]]<-sam_com$Beta
+        # print(g)
+        gam_vec[g]<-Gamma[[g]]
+        mu_isig_beta[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
+        beta_isig[g,]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]
+        mu_isig[g,]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]
+        beta_isig_beta[g]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
+        mu_isig_mu[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Mu[[g]],ncol=d,nrow=1))
       }
-    }
-    ### Store parameters and the values for updating common hyperparameters
-    gam_vec<-numeric(G)
-    mu_isig_beta<-numeric(G)
-    beta_isig<-matrix(nrow=G,ncol=d)
-    mu_isig<-matrix(nrow=G,ncol=d)
-    beta_isig_beta<-numeric(G)
-    mu_isig_mu<-numeric(G)
-    for (g in 1:G){
-      # print(g)
-      gam_vec[g]<-Gamma[[g]]
-      mu_isig_beta[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
-      beta_isig[g,]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]
-      mu_isig[g,]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]
-      beta_isig_beta[g]<-matrix(Beta[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Beta[[g]],ncol=d,nrow=1))
-      mu_isig_mu[g]<-matrix(Mu[[g]],ncol=d,nrow=1)%*%ISig[[g]]%*%t(matrix(Mu[[g]],ncol=d,nrow=1))
-    }
-    
-    ###Updating common hyperparameter using their posterior distributions
-    b0_new=1/(1/b0-sum(log(pi_g))-sum(log(sapply(ISig,det))/2)-sum(gam_vec)+sum(mu_isig_beta))
-    if(b0_new <= 0){b0_new=b0}
-    b1_new=b1
-    b2_new=b2
-    c1_new=c1+(colSums(beta_isig))%*%b1
-    c2_new=c2+(colSums(mu_isig))%*%b2
-    b3_new=1/(1/b3+0.5*(sum(beta_isig_beta)+sum(gam_vec^2)))
-    b4_new=1/(1/b4+0.5*(sum(mu_isig_mu)+G))
-    
-    a0<-rexp(1,rate=b0_new)
-    a1<-as.matrix(rmvnorm(1,mean=c1_new,sigma=b1_new),nrow=1)
-    a2<-as.matrix(rmvnorm(1,mean=c2_new,sigma=b2_new),nrow=1)
-    a3<-rexp(1,rate=b3_new)
-    a4<-rexp(1,rate=b4_new)
-    
-    nu0_new=nu0+G*a0
-    L0_new=solve(solve(L0)+Reduce("+",ISig))
-    
-    up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
-    V0_co<-list(riwish(nu0_new,L0_new))
-    
-    if(verbs){
-      cat("Chain:",multi_starts[chain],"start","\n")
-      cat("Iteration", it, "\n")
-      print(table(Class[,it]))
-    }
-    
-    ###Calucluate the log likelihood
-    likelihood <- matrix(0,nrow=n,ncol=G)
-    for (g in 1:G){
-      likelihood[,g] <- sapply(1:n,function(i){
-        liktry <- try(lik(mu=Mu[[g]],beta=Beta[[g]],gamma=Gamma[[g]],Sigma_inv=ISig[[g]],x=as.matrix(x[i,]),d=d),silent=TRUE)
-        ifelse(class(liktry)=="try-error",return(NA),return(pi_g[g]*liktry))
-      })
-    }
-    if(!any(is.na(likelihood))){
-      loglik <- sum(log(rowSums(likelihood)))
+      
+      ###Updating common hyperparameter using their posterior distributions
+      b0_new=1/(1/b0-sum(log(pi_g))-sum(log(sapply(ISig,det))/2)-sum(gam_vec)+sum(mu_isig_beta))
+      if(b0_new <= 0){b0_new=b0}
+      b1_new=b1
+      b2_new=b2
+      c1_new=c1+(colSums(beta_isig))%*%b1
+      c2_new=c2+(colSums(mu_isig))%*%b2
+      b3_new=1/(1/b3+0.5*(sum(beta_isig_beta)+sum(gam_vec^2)))
+      b4_new=1/(1/b4+0.5*(sum(mu_isig_mu)+G))
+      
+      a0<-rexp(1,rate=b0_new)
+      a1<-as.matrix(rmvnorm(1,mean=c1_new,sigma=b1_new),nrow=1)
+      a2<-as.matrix(rmvnorm(1,mean=c2_new,sigma=b2_new),nrow=1)
+      a3<-rexp(1,rate=b3_new)
+      a4<-rexp(1,rate=b4_new)
+      
+      nu0_new=nu0+G*a0
+      L0_new=solve(solve(L0)+Reduce("+",ISig))
+      
+      up_p<-list(a0=a0,a1=a1,a2=a2,a3=a3,a4=a4)
+      V0_co<-list(riwish(nu0_new,L0_new))
+      
+      if(verbs){
+        cat("Chain:",multi_starts[chain],"start","\n")
+        cat("Iteration", it, "\n")
+        print(table(Class[,it]))
+      }
+      
+      ###Calucluate the log likelihood
+      likelihood <- matrix(0,nrow=n,ncol=G)
+      for (g in 1:G){
+        likelihood[,g] <- sapply(1:n,function(i){
+          liktry <- try(lik(mu=Mu[[g]],beta=Beta[[g]],gamma=Gamma[[g]],Sigma_inv=ISig[[g]],x=as.matrix(x[i,]),d=d),silent=TRUE)
+          ifelse(class(liktry)=="try-error",return(NA),return(pi_g[g]*liktry))
+        })
+      }
+      if(!any(is.na(likelihood))){
+        loglik <- sum(log(rowSums(likelihood)))
+      }else{
+        loglik <- NA
+      }
+      all_loglik[[chain]][it] <- loglik
+      
+      ### First order the parameters according to the first element of Mu
+      ### Then store the parameters for further calculation
+      ord_grp_ind <- which(Ng > 0.03*n)
+      res_ord_ind <- which(Ng <= 0.03*n)
+      mu.temp <- Mu[names(ord_grp_ind)]
+      
+      ord.temp <- rank(-sapply(mu.temp,'[[',2))
+      resid.ord <- c((length(ord.temp)+1):G)
+      names(resid.ord) <- names(res_ord_ind)
+      
+      if(length(ord.temp)==G){orders<-ord.temp}else{orders<-c(ord.temp,resid.ord)}
+      
+      ord_Mu <- list()
+      ord_Beta <- list()
+      ord_Gamma <- list()
+      ord_ISig <- list()
+      ord_class <- numeric(n)
+      for (g in 1:G){
+        order_ind <- which(orders == g)
+        ord_Mu[[g]] <- Mu[[order_ind]]
+        ord_Beta[[g]] <- Beta[[order_ind]]
+        ord_Gamma[[g]] <- Gamma[[order_ind]]
+        ord_ISig[[g]] <- ISig[[order_ind]]
+        ord_class[which(Class[,it] == names(which(orders == g)))] = g
+      }
+      store_all_pars[[chain]][[it]] <- list(ord_Mu,ord_Beta,ord_Gamma,ord_ISig) 
+      ord_Class_labels[[chain]][,(it+1-it_old)] <- ord_class
     }else{
-      loglik <- NA
+      Gamma <- NA
+      ISig <- NA
+      Mu <- NA
+      Beta <- NA
+      phi <- NA
+      alpha <- NA
+      U <- NA
+      Uinv <- NA 
+      up_p <- NA 
+      V0_co <- NA
+      
+      if(verbs){
+        cat("Chain:",multi_starts[chain],"start","\n")
+        cat("Iteration", it, "\n")
+        print("Computational error, NA in the parameter estimation output")
+      }
+      
+      ###Calucluate the log likelihood
+      all_loglik[[chain]][it] <- NA
+      store_all_pars[[chain]][[it]] <- NA
+      ord_Class_labels[[chain]][,(it+1-it_old)] <- NA
+      
+      stop.cr = 1
     }
-    all_loglik[[chain]][it] <- loglik
-    
-    ### First order the parameters according to the first element of Mu
-    ### Then store the parameters for further calculation
-    ord_grp_ind <- which(Ng > 0.03*n)
-    res_ord_ind <- which(Ng <= 0.03*n)
-    mu.temp <- Mu[names(ord_grp_ind)]
-    
-    ord.temp <- rank(-sapply(mu.temp,'[[',2))
-    resid.ord <- c((length(ord.temp)+1):G)
-    names(resid.ord) <- names(res_ord_ind)
-    
-    if(length(ord.temp)==G){orders<-ord.temp}else{orders<-c(ord.temp,resid.ord)}
-    
-    ord_Mu <- list()
-    ord_Beta <- list()
-    ord_Gamma <- list()
-    ord_ISig <- list()
-    ord_class <- numeric(n)
-    for (g in 1:G){
-      order_ind <- which(orders == g)
-      ord_Mu[[g]] <- Mu[[order_ind]]
-      ord_Beta[[g]] <- Beta[[order_ind]]
-      ord_Gamma[[g]] <- Gamma[[order_ind]]
-      ord_ISig[[g]] <- ISig[[order_ind]]
-      ord_class[which(Class[,it] == names(which(orders == g)))] = g
-    }
-    store_all_pars[[chain]][[it]] <- list(ord_Mu,ord_Beta,ord_Gamma,ord_ISig) 
-    ord_Class_labels[[chain]][,(it+1-it_old)] <- ord_class
     
     it<-it+1
   }
@@ -1159,7 +1169,7 @@ for(chain in good.chain){
 }
 end_time <- Sys.time()
 
-# ## check convergence
+### check convergence
 # burnin <- 1:(max_it-500)
 # # burnin <- 1:(0.9*max_it)
 # object <- list()
@@ -1177,13 +1187,14 @@ end_time <- Sys.time()
 # }else{
 #   check.conv <- conv[[1]][1]
 # }
-# check.thresh <- 1.1
+# check.thresh <- 1.1 
 # obj <- mcmc.list(object)
 # conv <- gelman.diag(obj)
 # check.conv <- conv[[1]][1]
 
 for(chain in good.chain){
   if(any(is.na(all_loglik[[chain]]))){
+    negInfLik <- 1
     all_loglik[[chain]][c(which(is.na(all_loglik[[chain]])):max_it)] <- NA
     bad.chain[chain] <- chain
     stop.cr = 1
@@ -1272,9 +1283,7 @@ for (chain in convchains){
   }
 }
 
-forloglik_approx <- unlist(loglik_approx_ls)
-forloglik_approx[which(forloglik_approx==-Inf)] <- NA
-loglik_approx <- mean(forloglik_approx,na.rm=TRUE)
+loglik_approx <- mean(unlist(loglik_approx_ls))
 mu <- apply(Reduce(rbind,mu_exp),2,function(x){mean(x,na.rm=TRUE)})
 beta <- apply(Reduce(rbind,beta_exp),2,function(x){mean(x,na.rm=TRUE)})
 gamma <- apply(Reduce(rbind,gamma_exp),2,function(x){mean(x,na.rm=TRUE)})
